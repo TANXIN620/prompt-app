@@ -14,13 +14,21 @@ export class PromptDB extends Dexie {
 
   constructor() {
     super("prompt-manager");
-    // 索引：按分类/子类/收藏/时间检索，搜索靠 categoryId + 全表过滤
+    // v1：初始 schema
     this.version(1).stores({
-      // favorite 为布尔值，不能作为索引键，改为内存过滤
       prompts:
         "id, code, title, categoryId, subcategoryId, usageCount, lastUsedAt, createdAt",
       categories: "id, parentId, sortOrder",
       tags: "id, name",
+    });
+    // v2：强制重建（修复被外部脚本误建的 v1-only __test 库）
+    // 升级时清空旧 store 重建为业务 schema
+    this.version(2).stores({
+      prompts:
+        "id, code, title, categoryId, subcategoryId, usageCount, lastUsedAt, createdAt",
+      categories: "id, parentId, sortOrder",
+      tags: "id, name",
+      __test: null, // 删除可能存在的 __test 测试 store
     });
   }
 }

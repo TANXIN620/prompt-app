@@ -13,22 +13,13 @@ export class PromptDB extends Dexie {
   tags!: Table<Tag, string>;
 
   constructor() {
-    super("prompt-manager");
-    // v1：初始 schema
+    // 换全新库名，避开被外部诊断脚本搞坏的旧 prompt-manager v1 库
+    super("prompt-manager-v2");
     this.version(1).stores({
       prompts:
         "id, code, title, categoryId, subcategoryId, usageCount, lastUsedAt, createdAt",
       categories: "id, parentId, sortOrder",
       tags: "id, name",
-    });
-    // v2：强制重建（修复被外部脚本误建的 v1-only __test 库）
-    // 升级时清空旧 store 重建为业务 schema
-    this.version(2).stores({
-      prompts:
-        "id, code, title, categoryId, subcategoryId, usageCount, lastUsedAt, createdAt",
-      categories: "id, parentId, sortOrder",
-      tags: "id, name",
-      __test: null, // 删除可能存在的 __test 测试 store
     });
   }
 }
@@ -47,6 +38,8 @@ export function getDB(): PromptDB {
 /** 初始化：库为空时写入种子数据 */
 export async function initDB(): Promise<void> {
   const db = getDB();
+  // 确保库打开成功
+  await db.open();
   const count = await db.prompts.count();
   if (count > 0) return;
   await db.transaction("rw", db.categories, db.tags, db.prompts, async () => {
@@ -57,6 +50,7 @@ export async function initDB(): Promise<void> {
     await db.tags.bulkPut(seedTags);
     await db.prompts.bulkPut(seedPrompts);
   });
+  console.info("[initDB] 种子数据写入完成，共", seedPrompts.length, "条");
 }
 
 /** 重置为种子数据（开发用） */

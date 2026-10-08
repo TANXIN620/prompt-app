@@ -21,6 +21,9 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  // 左右栏宽度（可拖拽分隔条调节）
+  const [leftW, setLeftW] = useState(240);
+  const [rightW, setRightW] = useState(360);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,14 +100,30 @@ export default function Page() {
           数据库初始化失败：{error}
         </div>
       )}
-      <main className="grid flex-1 min-h-0 grid-cols-[210px_minmax(0,1fr)_340px] divide-x divide-line">
-        <aside className="min-h-0 overflow-hidden bg-surface">
+      <main className="flex flex-1 min-h-0">
+        <aside
+          style={{ width: leftW }}
+          className="min-h-0 shrink-0 overflow-hidden bg-surface"
+        >
           <CategoryTree />
         </aside>
-        <section className="min-h-0 overflow-hidden bg-surface">
+        <Resizer
+          onResize={(dx) =>
+            setLeftW((w) => Math.min(560, Math.max(180, w + dx)))
+          }
+        />
+        <section className="min-h-0 min-w-0 flex-1 overflow-hidden bg-surface">
           <PromptListPane />
         </section>
-        <aside className="min-h-0 overflow-hidden bg-surface">
+        <Resizer
+          onResize={(dx) =>
+            setRightW((w) => Math.min(640, Math.max(300, w - dx)))
+          }
+        />
+        <aside
+          style={{ width: rightW }}
+          className="min-h-0 shrink-0 overflow-hidden bg-surface"
+        >
           <PromptDetailPane
             onEdit={handleEdit}
             onDelete={handleDelete}
@@ -129,6 +148,52 @@ export default function Page() {
         onClose={() => setDialog({ kind: "none" })}
       />
       <CategoryManageDialog />
+    </div>
+  );
+}
+
+/**
+ * 可拖拽的竖向分隔条。
+ * onResize 接收每帧鼠标 x 位移（dx>0 向右），由父组件决定如何调整宽度。
+ */
+function Resizer({ onResize }: { onResize: (dx: number) => void }) {
+  const onResizeRef = useRef(onResize);
+  onResizeRef.current = onResize;
+  const startX = useRef(0);
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent) => {
+      const dx = e.clientX - startX.current;
+      startX.current = e.clientX;
+      onResizeRef.current(dx);
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [dragging]);
+
+  return (
+    <div
+      onMouseDown={(e) => {
+        e.preventDefault();
+        startX.current = e.clientX;
+        setDragging(true);
+      }}
+      className="group relative w-1 shrink-0 cursor-col-resize bg-line/60 transition-colors hover:bg-brand/50"
+      title="拖动以调整栏宽"
+    >
+      {/* 加宽的不可见热区，方便鼠标命中 */}
+      <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
     </div>
   );
 }

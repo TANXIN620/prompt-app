@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge, Button } from "./ui";
 import { Field, inputCls, Modal } from "./Modal";
+import { CategoryCombobox } from "./CategoryCombobox";
 
 type Mode = "paste" | "json";
 
@@ -248,20 +249,13 @@ export function BatchImportDialog({
               <Field
                 label="归入分类"
                 required
-                hint="多级树中的任意节点；缺失可在分类树新增"
+                hint="输入关键字快速定位；缺失可在分类树新增"
               >
-                <select
-                  className={inputCls}
+                <CategoryCombobox
+                  options={flat}
                   value={pickedId}
-                  onChange={(e) => setPickedId(e.target.value)}
-                >
-                  <option value="">选择分类…</option>
-                  {flat.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.path}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setPickedId}
+                />
               </Field>
 
               {/* 步骤2：粘贴 */}

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui-store";
 import { Button } from "./ui";
 import { Field, inputCls, Modal } from "./Modal";
+import { CategoryCombobox } from "./CategoryCombobox";
 
 interface FormState {
   code: string;
@@ -195,30 +196,25 @@ export function PromptFormDialog({
         </Field>
       </div>
 
-      {/* 分类选择：单一可搜索下拉（带完整路径） */}
+      {/* 分类选择：可搜索的下拉 */}
       <div className="mt-3">
         <Field
           label="所属分类"
           required
-          hint="多级树中的任意节点；缺失分类可在分类树右上角新增"
+          hint="输入关键字快速定位；缺失分类可在分类树右上角新增"
         >
           <div className="flex gap-2">
-            <select
-              className={cn(
-                inputCls,
-                "flex-1",
-                errors.pickedId && "border-red-400",
+            <div className="flex-1">
+              <CategoryCombobox
+                options={flat}
+                value={form.pickedId}
+                onChange={(id) => update("pickedId", id)}
+                error={!!errors.pickedId}
+              />
+              {errors.pickedId && (
+                <p className="mt-1 text-[11px] text-red-500">{errors.pickedId}</p>
               )}
-              value={form.pickedId}
-              onChange={(e) => update("pickedId", e.target.value)}
-            >
-              <option value="">选择分类…</option>
-              {flat.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.path}
-                </option>
-              ))}
-            </select>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -229,9 +225,6 @@ export function PromptFormDialog({
               + 新增
             </Button>
           </div>
-          {errors.pickedId && (
-            <p className="mt-1 text-[11px] text-red-500">{errors.pickedId}</p>
-          )}
         </Field>
       </div>
 

@@ -20,11 +20,11 @@ type Dialog =
   | { kind: "import" }
   | { kind: "detail" };
 
-/** 检测窄屏（< 768px）——手机竖屏等场景 */
+/** 检测窄屏（< 1024px）——平板竖屏/手机等场景，此时隐藏右栏改弹窗 */
 function useIsNarrow() {
   const [narrow, setNarrow] = useState(false);
   useEffect(() => {
-    const mql = window.matchMedia("(max-width: 767px)");
+    const mql = window.matchMedia("(max-width: 1023px)");
     const onChange = () => setNarrow(mql.matches);
     onChange();
     mql.addEventListener("change", onChange);
@@ -130,7 +130,7 @@ export default function Page() {
           数据库初始化失败：{error}
         </div>
       )}
-      <main className="flex flex-1 min-h-0">
+      <main className="flex flex-1 min-h-0 min-w-0">
         <aside
           style={{ width: isNarrow ? 180 : leftW }}
           className="min-h-0 shrink-0 overflow-hidden bg-surface"
@@ -151,7 +151,7 @@ export default function Page() {
           <>
             <Resizer
               onResize={(dx) =>
-                setRightW((w) => Math.min(640, Math.max(300, w - dx)))
+                setRightW((w) => Math.min(640, Math.max(220, w - dx)))
               }
             />
             <aside

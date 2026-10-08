@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   ChevronRight,
@@ -38,7 +38,6 @@ export function CategoryTree() {
       const anchor = getPromptAnchorId(p);
       map[anchor] = (map[anchor] ?? 0) + 1;
     }
-    // 自底向上累加：每个节点的计数 = 自身锚定数 + 所有后代锚定数
     const tree = buildCategoryTree(cats);
     const acc = (n: CategoryNode): number => {
       const self = map[n.id] ?? 0;
@@ -54,22 +53,36 @@ export function CategoryTree() {
   const tree = useMemo(() => (cats ? buildCategoryTree(cats) : []), [cats]);
   const totalCount = prompts?.length ?? 0;
 
+  // 监听自身宽度：< 220px 隐藏操作图标/计数，给分类名让空间
+  const [panelW, setPanelW] = useState(300);
+  useEffect(() => {
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setPanelW(e.contentRect.width);
+    });
+    const el = document.getElementById("cat-tree-panel");
+    if (el) ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const tight = panelW < 220;
+
   return (
-    <div className="flex h-full flex-col">
+    <div id="cat-tree-panel" className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 px-3 h-9 shrink-0">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
           分类树
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-1.5 text-[11px]"
-          title="新增根分类"
-          onClick={() => openCategoryModal("add-root", null)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          根分类
-        </Button>
+        {!tight && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1.5 text-[11px]"
+            title="新增根分类"
+            onClick={() => openCategoryModal("add-root", null)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            根分类
+          </Button>
+        )}
       </div>
       <nav className="flex-1 overflow-y-auto scroll-thin px-2 pb-3">
         {/* 全部 */}
@@ -86,9 +99,11 @@ export function CategoryTree() {
             <Layers className="h-3.5 w-3.5 text-muted" />
             <span>全部提示词</span>
           </span>
-          <span className="font-mono text-[11px] text-muted">
-            {totalCount}
-          </span>
+          {!tight && (
+            <span className="font-mono text-[11px] text-muted">
+              {totalCount}
+            </span>
+          )}
         </button>
 
         <div className="mt-1 flex flex-col gap-0.5">
@@ -97,6 +112,7 @@ export function CategoryTree() {
               key={node.id}
               node={node}
               counts={nodeCount}
+              tight={tight}
               selectedNodeId={selectedNodeId}
               collapsed={collapsed}
               onSelect={selectNode}
@@ -110,23 +126,27 @@ export function CategoryTree() {
           <div className="mt-4 flex flex-col items-center gap-1.5 px-3 text-center">
             <FolderClosed className="h-6 w-6 text-muted/50" />
             <p className="text-xs text-muted">暂无分类</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-1 h-7"
-              onClick={() => openCategoryModal("add-root", null)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              新增根分类
-            </Button>
+            {!tight && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-1 h-7"
+                onClick={() => openCategoryModal("add-root", null)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                新增根分类
+              </Button>
+            )}
           </div>
         )}
       </nav>
-      <div className="border-t border-line px-3 py-2">
-        <span className="text-[11px] text-muted">
-          多级分类 · 支持新增 / 重命名 / 移动 / 删除
-        </span>
-      </div>
+      {!tight && (
+        <div className="border-t border-line px-3 py-2">
+          <span className="text-[11px] text-muted">
+            多级分类 · 支持新增 / 重命名 / 移动 / 删除
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -134,6 +154,7 @@ export function CategoryTree() {
 function CategoryNodeView({
   node,
   counts,
+  tight,
   selectedNodeId,
   collapsed,
   onSelect,
@@ -142,6 +163,7 @@ function CategoryNodeView({
 }: {
   node: CategoryNode;
   counts: Record<string, number>;
+  tight: boolean;
   selectedNodeId: string | null;
   collapsed: Set<string>;
   onSelect: (id: string) => void;
@@ -202,31 +224,32 @@ function CategoryNodeView({
           <span className="truncate">{node.name}</span>
         </button>
 
-        <div className="flex items-center gap-0.5">
-          {/* 行内操作：常驻弱可见，悬停高亮，便于发现与点击 */}
-          <span className="flex items-center gap-0.5 opacity-40 transition-opacity group-hover:opacity-100">
-            <IconBtn
-              title="新增子级"
-              onClick={() => onAction("add-child", node.id)}
-            >
-              <FolderPlus className="h-3 w-3" />
-            </IconBtn>
-            <IconBtn title="重命名" onClick={() => onAction("rename", node.id)}>
-              <Pencil className="h-3 w-3" />
-            </IconBtn>
-            <IconBtn title="移动到…" onClick={() => onAction("move", node.id)}>
-              <FolderInput className="h-3 w-3" />
-            </IconBtn>
-            <IconBtn
-              title="删除"
-              danger
-              onClick={() => onAction("delete", node.id)}
-            >
-              <Trash2 className="h-3 w-3" />
-            </IconBtn>
-          </span>
-          <span className="font-mono text-[11px] text-muted">{count}</span>
-        </div>
+        {!tight && (
+          <div className="flex items-center gap-0.5">
+            <span className="flex items-center gap-0.5 opacity-40 transition-opacity group-hover:opacity-100">
+              <IconBtn
+                title="新增子级"
+                onClick={() => onAction("add-child", node.id)}
+              >
+                <FolderPlus className="h-3 w-3" />
+              </IconBtn>
+              <IconBtn title="重命名" onClick={() => onAction("rename", node.id)}>
+                <Pencil className="h-3 w-3" />
+              </IconBtn>
+              <IconBtn title="移动到…" onClick={() => onAction("move", node.id)}>
+                <FolderInput className="h-3 w-3" />
+              </IconBtn>
+              <IconBtn
+                title="删除"
+                danger
+                onClick={() => onAction("delete", node.id)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </IconBtn>
+            </span>
+            <span className="font-mono text-[11px] text-muted">{count}</span>
+          </div>
+        )}
       </div>
 
       {isOpen &&
@@ -236,6 +259,7 @@ function CategoryNodeView({
             key={child.id}
             node={child}
             counts={counts}
+            tight={tight}
             selectedNodeId={selectedNodeId}
             collapsed={collapsed}
             onSelect={onSelect}
@@ -268,9 +292,7 @@ function IconBtn({
       }}
       className={cn(
         "rounded p-1 text-muted transition-colors hover:bg-surface",
-        danger
-          ? "hover:text-red-500"
-          : "hover:text-foreground",
+        danger ? "hover:text-red-500" : "hover:text-foreground",
       )}
     >
       {children}

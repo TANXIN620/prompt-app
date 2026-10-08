@@ -19,7 +19,7 @@ export function Modal({
   subtitle?: string;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "full";
 }) {
   // Esc 关闭
   useEffect(() => {
@@ -37,7 +37,13 @@ export function Modal({
 
   if (!open) return null;
 
-  const widths = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-3xl" };
+  const widths = {
+    sm: "max-w-md",
+    md: "max-w-xl",
+    lg: "max-w-3xl",
+    full: "max-w-none",
+  };
+  const isFull = size === "full";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -49,7 +55,10 @@ export function Modal({
       {/* 面板 */}
       <div
         className={cn(
-          "relative flex max-h-[88vh] w-full flex-col rounded-2xl border border-line bg-surface shadow-xl",
+          "relative flex flex-col border border-line bg-surface shadow-xl",
+          isFull
+            ? "inset-2 m-auto h-[calc(100%-1rem)] w-[calc(100%-1rem)] max-h-none max-w-none rounded-xl"
+            : "max-h-[88vh] w-full rounded-2xl",
           widths[size],
         )}
         role="dialog"

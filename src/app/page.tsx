@@ -10,20 +10,41 @@ import { PromptFormDialog } from "@/components/PromptFormDialog";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { BatchImportDialog } from "@/components/BatchImportDialog";
 import { CategoryManageDialog } from "@/components/CategoryManageDialog";
+import { Modal } from "@/components/Modal";
+import { useUIStore } from "@/store/ui-store";
 
 type Dialog =
   | { kind: "none" }
   | { kind: "form"; editId: string | null }
   | { kind: "delete"; id: string; title: string }
-  | { kind: "import" };
+  | { kind: "import" }
+  | { kind: "detail" };
+
+/** 检测窄屏（< 768px）——手机竖屏等场景 */
+function useIsNarrow() {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 767px)");
+    const onChange = () => setNarrow(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return narrow;
+}
 
 export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  // 左右栏宽度（可拖拽分隔条调节）
+  const isNarrow = useIsNarrow();
+  // 左右栏宽度（可拖拽分隔条调节；窄屏时左栏收缩，右栏隐藏）
   const [leftW, setLeftW] = useState(240);
   const [rightW, setRightW] = useState(360);
+  const closeDetail = () => {
+    setDialog({ kind: "none" });
+    useUIStore.getState().selectPrompt(null);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +109,15 @@ export default function Page() {
     setDialog({ kind: "delete", id, title });
   }
 
+  // 窄屏：选中卡片后自动弹出详情 Modal
+  const selectedPromptId = useUIStore((s) => s.selectedPromptId);
+  useEffect(() => {
+    if (!isNarrow) return;
+    if (selectedPromptId && dialog.kind === "none") {
+      setDialog({ kind: "detail" });
+    }
+  }, [isNarrow, selectedPromptId, dialog.kind]);
+
   return (
     <div className="flex h-screen flex-col bg-background">
       <AppHeader
@@ -102,34 +132,55 @@ export default function Page() {
       )}
       <main className="flex flex-1 min-h-0">
         <aside
-          style={{ width: leftW }}
+          style={{ width: isNarrow ? 180 : leftW }}
           className="min-h-0 shrink-0 overflow-hidden bg-surface"
         >
           <CategoryTree />
         </aside>
-        <Resizer
-          onResize={(dx) =>
-            setLeftW((w) => Math.min(560, Math.max(180, w + dx)))
-          }
-        />
+        {!isNarrow && (
+          <Resizer
+            onResize={(dx) =>
+              setLeftW((w) => Math.min(560, Math.max(180, w + dx)))
+            }
+          />
+        )}
         <section className="min-h-0 min-w-0 flex-1 overflow-hidden bg-surface">
           <PromptListPane />
         </section>
-        <Resizer
-          onResize={(dx) =>
-            setRightW((w) => Math.min(640, Math.max(300, w - dx)))
-          }
-        />
-        <aside
-          style={{ width: rightW }}
-          className="min-h-0 shrink-0 overflow-hidden bg-surface"
-        >
-          <PromptDetailPane
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-          />
-        </aside>
+        {!isNarrow && (
+          <>
+            <Resizer
+              onResize={(dx) =>
+                setRightW((w) => Math.min(640, Math.max(300, w - dx)))
+              }
+            />
+            <aside
+              style={{ width: rightW }}
+              className="min-h-0 shrink-0 overflow-hidden bg-surface"
+            >
+              <PromptDetailPane
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            </aside>
+          </>
+        )}
       </main>
+
+      {/* 窄屏：详情弹出式 Modal */}
+      {isNarrow && selectedPromptId && dialog.kind === "detail" && (
+        <Modal open onClose={closeDetail} size="full" title="">
+          <div className="h-full">
+            <PromptDetailPane
+              onEdit={handleEdit}
+              onDelete={(id, title) => {
+                closeDetail();
+                handleDelete(id, title);
+              }}
+            />
+          </div>
+        </Modal>
+      )}
 
       {/* 弹窗群 */}
       <PromptFormDialog

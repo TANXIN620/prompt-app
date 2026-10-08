@@ -3,13 +3,16 @@ import type { Category, Prompt, Tag } from "./types";
 // 基准时间：2026-09-20 00:00:00 UTC，种子数据按序号递增
 const BASE = Date.UTC(2026, 8, 20, 0, 0, 0);
 
-/** 一级分类 */
+/** 一级分类（顶层） */
 export const seedCategories: Category[] = [
-  { id: "cat-material", name: "材质类", parentId: null, sortOrder: 1 },
-  { id: "cat-prop", name: "道具类", parentId: null, sortOrder: 2 },
-  { id: "cat-fruit", name: "水果类", parentId: null, sortOrder: 3 },
-  { id: "cat-kitchen", name: "厨具类", parentId: null, sortOrder: 4 },
-  { id: "cat-general", name: "通用提示词", parentId: null, sortOrder: 5 },
+  // 增强细节（根）：包含材质/道具/水果/厨具等细节增强类提示词
+  { id: "cat-detail", name: "增强细节", parentId: null, sortOrder: 1 },
+  { id: "cat-general", name: "通用提示词", parentId: null, sortOrder: 2 },
+  // 细节增强的二级分类（原一级下移到"增强细节"下）
+  { id: "cat-material", name: "材质类", parentId: "cat-detail", sortOrder: 1 },
+  { id: "cat-prop", name: "道具类", parentId: "cat-detail", sortOrder: 2 },
+  { id: "cat-fruit", name: "水果类", parentId: "cat-detail", sortOrder: 3 },
+  { id: "cat-kitchen", name: "厨具类", parentId: "cat-detail", sortOrder: 4 },
 ];
 
 /** 二级分类（子类） */

@@ -33,15 +33,22 @@ export function PromptDetailPane({
     const db = getDB();
     const p = await db.prompts.get(id);
     if (!p) return null;
-    const [cat, sub, tags] = await Promise.all([
-      db.categories.get(p.categoryId),
-      db.categories.get(p.subcategoryId),
+    const [allCats, tags] = await Promise.all([
+      db.categories.toArray(),
       Promise.all(p.tags.map((t) => db.tags.get(t))),
     ]);
+    // 完整路径：从提示词锚点（subcategoryId 优先，回退 categoryId）向上回溯到根
+    const anchor = p.subcategoryId || p.categoryId;
+    const pathCats: { id: string; name: string }[] = [];
+    const map = new Map(allCats.map((c) => [c.id, c]));
+    let cur = map.get(anchor);
+    while (cur) {
+      pathCats.unshift({ id: cur.id, name: cur.name });
+      cur = cur.parentId ? map.get(cur.parentId) : undefined;
+    }
     return {
       p,
-      cat: cat?.name,
-      sub: sub?.name,
+      pathCats,
       tags: tags.filter((t): t is NonNullable<typeof t> => !!t),
     };
   }, [id]);
@@ -86,7 +93,7 @@ export function PromptDetailPane({
     );
   }
 
-  const { p, cat, sub, tags } = data;
+  const { p, pathCats, tags } = data;
 
   return (
     <div className="flex h-full flex-col">
@@ -99,7 +106,16 @@ export function PromptDetailPane({
           </h2>
         </div>
         <p className="mt-1 text-xs text-muted">
-          {cat} › <span className="text-brand-text font-medium">{sub}</span>
+          {pathCats.map((c, i) => (
+            <span key={c.id}>
+              {i > 0 && <span className="text-muted/60"> › </span>}
+              {i === pathCats.length - 1 ? (
+                <span className="text-brand-text font-medium">{c.name}</span>
+              ) : (
+                c.name
+              )}
+            </span>
+          ))}
         </p>
 
         {/* 标签 */}

@@ -9,6 +9,7 @@ import { PromptDetailPane } from "@/components/PromptDetailPane";
 import { PromptFormDialog } from "@/components/PromptFormDialog";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { BatchImportDialog } from "@/components/BatchImportDialog";
+import { CategoryManageDialog } from "@/components/CategoryManageDialog";
 
 type Dialog =
   | { kind: "none" }
@@ -127,6 +128,7 @@ export default function Page() {
         open={dialog.kind === "import"}
         onClose={() => setDialog({ kind: "none" })}
       />
+      <CategoryManageDialog />
     </div>
   );
 }

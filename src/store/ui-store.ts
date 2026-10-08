@@ -2,14 +2,27 @@ import { create } from "zustand";
 
 export type ListFilter = "all" | "favorite" | "recent";
 
+/** 分类管理弹窗模式 */
+export type CategoryModalMode =
+  | "add-root" // 新增根分类
+  | "add-child" // 在某分类下新增子级
+  | "rename" // 重命名某分类
+  | "move" // 移动某分类到新父级
+  | "delete"; // 删除某分类
+
+interface CategoryModalState {
+  open: boolean;
+  mode: CategoryModalMode | null;
+  /** 操作目标分类 id（add-child/rename/move/delete 用；add-root 时为 null） */
+  targetId: string | null;
+}
+
 interface UIState {
-  /** 选中的一级分类（点击子类时其父类自动选中） */
-  selectedCategoryId: string | null;
-  /** 选中的二级分类；为 null 表示展示该一级分类下全部 */
-  selectedSubcategoryId: string | null;
+  /** 选中的分类节点 id（任意层级；null 表示全部） */
+  selectedNodeId: string | null;
   /** 搜索关键词 */
   searchQuery: string;
-  /** 折叠的一级分类 id 集合 */
+  /** 折叠的分类节点 id 集合 */
   collapsed: Set<string>;
   /** 列表过滤模式 */
   listFilter: ListFilter;
@@ -17,44 +30,46 @@ interface UIState {
   selectedPromptId: string | null;
   /** 复制反馈：刚复制的提示词 id */
   copiedPromptId: string | null;
+  /** 分类管理弹窗状态 */
+  categoryModal: CategoryModalState;
 
-  selectCategory: (categoryId: string) => void;
-  selectSubcategory: (categoryId: string, subcategoryId: string) => void;
-  clearSelection: () => void;
+  selectNode: (id: string | null) => void;
   setSearch: (q: string) => void;
-  toggleCollapse: (categoryId: string) => void;
+  toggleCollapse: (id: string) => void;
   setListFilter: (f: ListFilter) => void;
   selectPrompt: (id: string | null) => void;
   setCopied: (id: string | null) => void;
+  openCategoryModal: (
+    mode: CategoryModalMode,
+    targetId?: string | null,
+  ) => void;
+  closeCategoryModal: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  selectedCategoryId: null,
-  selectedSubcategoryId: null,
+  selectedNodeId: null,
   searchQuery: "",
-  collapsed: new Set(["cat-prop", "cat-fruit", "cat-kitchen", "cat-general"]),
+  // 默认折叠三级以下，避免树过长
+  collapsed: new Set<string>(["cat-general"]),
   listFilter: "all",
   selectedPromptId: null,
   copiedPromptId: null,
+  categoryModal: { open: false, mode: null, targetId: null },
 
-  selectCategory: (categoryId) =>
-    set({ selectedCategoryId: categoryId, selectedSubcategoryId: null }),
-  selectSubcategory: (categoryId, subcategoryId) =>
-    set({
-      selectedCategoryId: categoryId,
-      selectedSubcategoryId: subcategoryId,
-    }),
-  clearSelection: () =>
-    set({ selectedCategoryId: null, selectedSubcategoryId: null }),
+  selectNode: (id) => set({ selectedNodeId: id }),
   setSearch: (q) => set({ searchQuery: q }),
-  toggleCollapse: (categoryId) =>
+  toggleCollapse: (id) =>
     set((s) => {
       const next = new Set(s.collapsed);
-      if (next.has(categoryId)) next.delete(categoryId);
-      else next.add(categoryId);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return { collapsed: next };
     }),
   setListFilter: (f) => set({ listFilter: f }),
   selectPrompt: (id) => set({ selectedPromptId: id }),
   setCopied: (id) => set({ copiedPromptId: id }),
+  openCategoryModal: (mode, targetId = null) =>
+    set({ categoryModal: { open: true, mode, targetId } }),
+  closeCategoryModal: () =>
+    set({ categoryModal: { open: false, mode: null, targetId: null } }),
 }));

@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Search, Star, Clock, LayoutGrid, Inbox } from "lucide-react";
-import { getDB } from "@/lib/db";
+import { getDB, getCategoryPath, getPromptAnchorId } from "@/lib/db";
 import { copyText, cn } from "@/lib/utils";
 import { useUIStore, type ListFilter } from "@/store/ui-store";
 import { PromptCard } from "./PromptCard";
@@ -21,8 +21,7 @@ export function PromptListPane() {
   const tags = useLiveQuery(() => getDB().tags.toArray(), []);
 
   const {
-    selectedCategoryId,
-    selectedSubcategoryId,
+    selectedNodeId,
     searchQuery,
     listFilter,
     selectedPromptId,
@@ -33,33 +32,51 @@ export function PromptListPane() {
     setCopied,
   } = useUIStore();
 
-  const { catName, subName, tagName } = useMemo(() => {
+  // 分类 id -> 名称、id -> 路径字符串
+  const { catName, tagName, anchorPath } = useMemo(() => {
     const cn: Record<string, string> = {};
     for (const c of cats ?? []) cn[c.id] = c.name;
-    const sn: Record<string, string> = {};
-    for (const c of cats ?? []) sn[c.id] = c.name;
     const tn: Record<string, string> = {};
     for (const t of tags ?? []) tn[t.id] = t.name;
-    return { catName: cn, subName: sn, tagName: tn };
-  }, [cats, tags]);
+    // 提示词锚点 -> 完整路径字符串
+    const ap: Record<string, string> = {};
+    for (const p of prompts ?? []) {
+      const anchor = getPromptAnchorId(p);
+      const path = getCategoryPath(cats ?? [], anchor);
+      ap[anchor] = path.map((c) => c.name).join(" › ");
+    }
+    return { catName: cn, tagName: tn, anchorPath: ap };
+  }, [cats, tags, prompts]);
+
+  // 选中节点的子树 id 集合（用于过滤）
+  const descendantSet = useMemo(() => {
+    if (!cats || !selectedNodeId) return null;
+    const set = new Set<string>([selectedNodeId]);
+    // 自顶向下收集
+    const stack = [selectedNodeId];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      for (const c of cats) {
+        if (c.parentId === cur && !set.has(c.id)) {
+          set.add(c.id);
+          stack.push(c.id);
+        }
+      }
+    }
+    return set;
+  }, [cats, selectedNodeId]);
 
   const list = useMemo(() => {
     if (!prompts) return [];
     const q = searchQuery.trim().toLowerCase();
     let arr = prompts.filter((p) => {
       // 有搜索词时全局搜索，忽略分类筛选（符合用户直觉）
-      if (!q) {
-        if (
-          selectedSubcategoryId &&
-          p.subcategoryId !== selectedSubcategoryId
-        )
+      if (!q && descendantSet) {
+        const anchor = getPromptAnchorId(p);
+        // 提示词命中条件：锚点在子树内，或 categoryId 也在子树内
+        if (!descendantSet.has(anchor) && !descendantSet.has(p.categoryId)) {
           return false;
-        if (
-          selectedCategoryId &&
-          !selectedSubcategoryId &&
-          p.categoryId !== selectedCategoryId
-        )
-          return false;
+        }
       }
       if (listFilter === "favorite" && !p.favorite) return false;
       if (listFilter === "recent" && !p.lastUsedAt) return false;
@@ -67,8 +84,8 @@ export function PromptListPane() {
         const hay = [
           p.code,
           p.title,
+          anchorPath[getPromptAnchorId(p)] ?? "",
           catName[p.categoryId] ?? "",
-          subName[p.subcategoryId] ?? "",
           p.content,
           p.note ?? "",
           ...p.tags.map((t) => tagName[t] ?? ""),
@@ -80,31 +97,28 @@ export function PromptListPane() {
       return true;
     });
 
-    // 排序：收藏优先 → 分类序 → 编号
+    // 排序：收藏优先 → 分类路径 → 编号
     if (listFilter === "recent") {
       arr = arr
         .slice()
         .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0));
     } else {
-      arr = arr
-        .slice()
-        .sort((a, b) => {
-          if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
-          const ca = catName[a.categoryId] ?? "";
-          const cb = catName[b.categoryId] ?? "";
-          if (ca !== cb) return ca.localeCompare(cb, "zh");
-          return a.code.localeCompare(b.code, undefined, { numeric: true });
-        });
+      arr = arr.slice().sort((a, b) => {
+        if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+        const pa = anchorPath[getPromptAnchorId(a)] ?? "";
+        const pb = anchorPath[getPromptAnchorId(b)] ?? "";
+        if (pa !== pb) return pa.localeCompare(pb, "zh");
+        return a.code.localeCompare(b.code, undefined, { numeric: true });
+      });
     }
     return arr;
   }, [
     prompts,
     searchQuery,
-    selectedCategoryId,
-    selectedSubcategoryId,
+    descendantSet,
     listFilter,
     catName,
-    subName,
+    anchorPath,
     tagName,
   ]);
 
@@ -122,14 +136,18 @@ export function PromptListPane() {
     window.setTimeout(() => setCopied(null), 1400);
   }
 
+  // 顶部面包屑
+  const selectedPath = useMemo(() => {
+    if (!cats || !selectedNodeId) return "";
+    return getCategoryPath(cats, selectedNodeId)
+      .map((c) => c.name)
+      .join(" › ");
+  }, [cats, selectedNodeId]);
+
   const q = searchQuery.trim();
   const crumbs = q
     ? `搜索“${q}”`
-    : selectedSubcategoryId != null
-      ? `${catName[selectedCategoryId ?? ""] ?? ""} › ${subName[selectedSubcategoryId] ?? ""}`
-      : selectedCategoryId != null
-        ? catName[selectedCategoryId] ?? ""
-        : "全部";
+    : selectedPath || "全部";
 
   return (
     <div className="flex h-full flex-col">
@@ -173,7 +191,7 @@ export function PromptListPane() {
               );
             })}
           </div>
-          <span className="text-[11px] text-muted">
+          <span className="truncate pl-2 text-[11px] text-muted">
             {crumbs} · {list.length} 条
           </span>
         </div>
@@ -195,8 +213,7 @@ export function PromptListPane() {
               <PromptCard
                 key={p.id}
                 prompt={p}
-                categoryName={catName[p.categoryId] ?? ""}
-                subcategoryName={subName[p.subcategoryId] ?? ""}
+                categoryPath={anchorPath[getPromptAnchorId(p)] ?? ""}
                 selected={selectedPromptId === p.id}
                 copied={copiedPromptId === p.id}
                 onSelect={() => selectPrompt(p.id)}

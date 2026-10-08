@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Check, Star } from "lucide-react";
-import { getDB } from "@/lib/db";
+import {
+  anchorToPromptFields,
+  flattenTree,
+  getDB,
+} from "@/lib/db";
 import type { Prompt } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui-store";
@@ -13,8 +17,8 @@ import { Field, inputCls, Modal } from "./Modal";
 interface FormState {
   code: string;
   title: string;
-  categoryId: string;
-  subcategoryId: string;
+  /** 选中的分类锚点 id（任意层级） */
+  pickedId: string;
   content: string;
   note: string;
   favorite: boolean;
@@ -24,8 +28,7 @@ interface FormState {
 const EMPTY: FormState = {
   code: "",
   title: "",
-  categoryId: "",
-  subcategoryId: "",
+  pickedId: "",
   content: "",
   note: "",
   favorite: false,
@@ -44,25 +47,14 @@ export function PromptFormDialog({
   const cats = useLiveQuery(() => getDB().categories.toArray(), []);
   const tags = useLiveQuery(() => getDB().tags.toArray(), []);
   const selectPrompt = useUIStore((s) => s.selectPrompt);
+  const openCategoryModal = useUIStore((s) => s.openCategoryModal);
 
   const [form, setForm] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
-  const { topCats, subByParent } = useMemo(() => {
-    const top = (cats ?? [])
-      .filter((c) => c.parentId === null)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-    const sub: Record<string, typeof cats> = {};
-    for (const c of cats ?? []) {
-      if (c.parentId) (sub[c.parentId] ??= []).push(c);
-    }
-    for (const k of Object.keys(sub)) {
-      const arr = sub[k];
-      if (arr) arr.sort((a, b) => a.sortOrder - b.sortOrder);
-    }
-    return { topCats: top, subByParent: sub };
-  }, [cats]);
+  // 扁平化分类列表（带完整路径），用于下拉
+  const flat = useMemo(() => (cats ? flattenTree(cats) : []), [cats]);
 
   // 编辑模式下加载已有数据
   useEffect(() => {
@@ -78,8 +70,8 @@ export function PromptFormDialog({
         setForm({
           code: p.code,
           title: p.title,
-          categoryId: p.categoryId,
-          subcategoryId: p.subcategoryId,
+          // 锚点 = subcategoryId 优先，回退 categoryId
+          pickedId: p.subcategoryId || p.categoryId,
           content: p.content,
           note: p.note ?? "",
           favorite: p.favorite,
@@ -98,8 +90,7 @@ export function PromptFormDialog({
     const e: Record<string, string> = {};
     if (!form.title.trim()) e.title = "请填写标题";
     if (!form.content.trim()) e.content = "请填写提示词内容";
-    if (!form.categoryId) e.categoryId = "请选择分类";
-    if (!form.subcategoryId) e.subcategoryId = "请选择子类";
+    if (!form.pickedId) e.pickedId = "请选择分类";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -110,13 +101,18 @@ export function PromptFormDialog({
     try {
       const db = getDB();
       const now = Date.now();
+      const picked = (cats ?? []).find((c) => c.id === form.pickedId);
+      if (!picked) {
+        setErrors({ pickedId: "分类不存在，请重新选择" });
+        return;
+      }
+      const { categoryId, subcategoryId } = anchorToPromptFields(picked);
       if (editId) {
-        const prev = await db.prompts.get(editId);
         await db.prompts.update(editId, {
           code: form.code.trim(),
           title: form.title.trim(),
-          categoryId: form.categoryId,
-          subcategoryId: form.subcategoryId,
+          categoryId,
+          subcategoryId,
           content: form.content,
           note: form.note.trim() || undefined,
           favorite: form.favorite,
@@ -132,8 +128,8 @@ export function PromptFormDialog({
           id,
           code: form.code.trim(),
           title: form.title.trim(),
-          categoryId: form.categoryId,
-          subcategoryId: form.subcategoryId,
+          categoryId,
+          subcategoryId,
           content: form.content,
           tags: form.tags,
           note: form.note.trim() || undefined,
@@ -197,47 +193,44 @@ export function PromptFormDialog({
             <p className="mt-1 text-[11px] text-red-500">{errors.title}</p>
           )}
         </Field>
+      </div>
 
-        <Field label="一级分类" required>
-          <select
-            className={cn(inputCls, errors.categoryId && "border-red-400")}
-            value={form.categoryId}
-            onChange={(e) => {
-              update("categoryId", e.target.value);
-              update("subcategoryId", "");
-            }}
-          >
-            <option value="">选择分类…</option>
-            {topCats.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          {errors.categoryId && (
-            <p className="mt-1 text-[11px] text-red-500">{errors.categoryId}</p>
-          )}
-        </Field>
-        <Field label="子类" required>
-          <select
-            className={cn(inputCls, errors.subcategoryId && "border-red-400")}
-            value={form.subcategoryId}
-            disabled={!form.categoryId}
-            onChange={(e) => update("subcategoryId", e.target.value)}
-          >
-            <option value="">
-              {form.categoryId ? "选择子类…" : "先选一级分类"}
-            </option>
-            {(subByParent[form.categoryId] ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          {errors.subcategoryId && (
-            <p className="mt-1 text-[11px] text-red-500">
-              {errors.subcategoryId}
-            </p>
+      {/* 分类选择：单一可搜索下拉（带完整路径） */}
+      <div className="mt-3">
+        <Field
+          label="所属分类"
+          required
+          hint="多级树中的任意节点；缺失分类可在分类树右上角新增"
+        >
+          <div className="flex gap-2">
+            <select
+              className={cn(
+                inputCls,
+                "flex-1",
+                errors.pickedId && "border-red-400",
+              )}
+              value={form.pickedId}
+              onChange={(e) => update("pickedId", e.target.value)}
+            >
+              <option value="">选择分类…</option>
+              {flat.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.path}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              title="新增分类"
+              onClick={() => openCategoryModal("add-root", null)}
+            >
+              + 新增
+            </Button>
+          </div>
+          {errors.pickedId && (
+            <p className="mt-1 text-[11px] text-red-500">{errors.pickedId}</p>
           )}
         </Field>
       </div>

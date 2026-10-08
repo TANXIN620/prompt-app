@@ -7,16 +7,15 @@ import { Badge } from "./ui";
 
 export function PromptCard({
   prompt,
-  categoryName,
-  subcategoryName,
+  categoryPath,
   selected,
   copied,
   onSelect,
   onCopy,
 }: {
   prompt: Prompt;
-  categoryName: string;
-  subcategoryName: string;
+  /** 完整分类路径，如「增强细节 › 材质类 › 木材」 */
+  categoryPath: string;
   selected: boolean;
   copied: boolean;
   onSelect: () => void;
@@ -47,9 +46,7 @@ export function PromptCard({
         {prompt.favorite && (
           <Star className="h-3.5 w-3.5 fill-brand text-brand shrink-0" />
         )}
-        <Badge tone={selected ? "brand" : "neutral"}>
-          {categoryName}·{subcategoryName}
-        </Badge>
+        <Badge tone={selected ? "brand" : "neutral"}>{categoryPath}</Badge>
       </div>
 
       <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted">

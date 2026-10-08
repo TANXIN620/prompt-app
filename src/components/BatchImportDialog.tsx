@@ -3,7 +3,11 @@
 import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ClipboardPaste, FileUp, Upload, Check } from "lucide-react";
-import { getDB } from "@/lib/db";
+import {
+  anchorToPromptFields,
+  flattenTree,
+  getDB,
+} from "@/lib/db";
 import type { Prompt } from "@/lib/types";
 import {
   dedupeDrafts,
@@ -26,27 +30,19 @@ export function BatchImportDialog({
   const [mode, setMode] = useState<Mode>("paste");
   const cats = useLiveQuery(() => getDB().categories.toArray(), []);
   const [raw, setRaw] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [subcategoryId, setSubcategoryId] = useState("");
+  /** 选中的分类锚点 id（任意层级） */
+  const [pickedId, setPickedId] = useState("");
   const [imported, setImported] = useState<{ added: number; dup: number } | null>(
     null,
   );
   const [busy, setBusy] = useState(false);
 
-  const { topCats, subByParent } = useMemo(() => {
-    const top = (cats ?? [])
-      .filter((c) => c.parentId === null)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-    const sub: Record<string, typeof cats> = {};
-    for (const c of cats ?? []) {
-      if (c.parentId) (sub[c.parentId] ??= []).push(c);
-    }
-    for (const k of Object.keys(sub)) {
-      const arr = sub[k];
-      if (arr) arr.sort((a, b) => a.sortOrder - b.sortOrder);
-    }
-    return { topCats: top, subByParent: sub };
-  }, [cats]);
+  // 扁平化分类（带完整路径），用于下拉
+  const flat = useMemo(() => (cats ? flattenTree(cats) : []), [cats]);
+  const pickedPath = useMemo(
+    () => flat.find((c) => c.id === pickedId)?.path ?? "",
+    [flat, pickedId],
+  );
 
   const drafts = useMemo(() => parseImportText(raw), [raw]);
   const { unique, duplicates } = useMemo(
@@ -56,8 +52,7 @@ export function BatchImportDialog({
 
   function reset() {
     setRaw("");
-    setCategoryId("");
-    setSubcategoryId("");
+    setPickedId("");
     setImported(null);
     setMode("paste");
   }
@@ -117,11 +112,14 @@ export function BatchImportDialog({
   }
 
   async function handleConfirm() {
-    if (!categoryId || !subcategoryId || unique.length === 0) return;
+    if (!pickedId || unique.length === 0) return;
     setBusy(true);
     try {
       const db = getDB();
       const now = Date.now();
+      const picked = (cats ?? []).find((c) => c.id === pickedId);
+      if (!picked) return;
+      const { categoryId, subcategoryId } = anchorToPromptFields(picked);
       // 与已有数据去重：同 code+title+content 跳过
       const existing = await db.prompts.toArray();
       const existKey = new Set(
@@ -164,8 +162,7 @@ export function BatchImportDialog({
   }
 
   const previewList = unique.slice(0, 6);
-  const canImport =
-    !!categoryId && !!subcategoryId && unique.length > 0 && !imported;
+  const canImport = !!pickedId && unique.length > 0 && !imported;
 
   return (
     <Modal
@@ -248,42 +245,24 @@ export function BatchImportDialog({
           {mode === "paste" ? (
             <>
               {/* 步骤1：分类归属 */}
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="归入一级分类" required>
-                  <select
-                    className={inputCls}
-                    value={categoryId}
-                    onChange={(e) => {
-                      setCategoryId(e.target.value);
-                      setSubcategoryId("");
-                    }}
-                  >
-                    <option value="">选择分类…</option>
-                    {topCats.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="归入子类" required>
-                  <select
-                    className={inputCls}
-                    value={subcategoryId}
-                    disabled={!categoryId}
-                    onChange={(e) => setSubcategoryId(e.target.value)}
-                  >
-                    <option value="">
-                      {categoryId ? "选择子类…" : "先选一级分类"}
+              <Field
+                label="归入分类"
+                required
+                hint="多级树中的任意节点；缺失可在分类树新增"
+              >
+                <select
+                  className={inputCls}
+                  value={pickedId}
+                  onChange={(e) => setPickedId(e.target.value)}
+                >
+                  <option value="">选择分类…</option>
+                  {flat.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.path}
                     </option>
-                    {(subByParent[categoryId] ?? []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
+                  ))}
+                </select>
+              </Field>
 
               {/* 步骤2：粘贴 */}
               <Field
@@ -359,14 +338,14 @@ export function BatchImportDialog({
                       </li>
                     )}
                   </ul>
-                  {!categoryId || !subcategoryId ? (
+                  {!pickedId ? (
                     <p className="mt-2 text-[12px] text-muted">
                       <FileUp className="mr-1 inline h-3 w-3" />
                       选择分类后即可导入
                     </p>
                   ) : (
                     <p className="mt-2 text-[12px] text-brand-text">
-                      将归入「{(cats ?? []).find((c) => c.id === categoryId)?.name} › {(cats ?? []).find((c) => c.id === subcategoryId)?.name}」，与已有数据自动去重
+                      将归入「{pickedPath}」，与已有数据自动去重
                     </p>
                   )}
                 </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { FileText, Plus, Upload, Download, RefreshCw, Cloud } from "lucide-react";
 import { getDB } from "@/lib/db";
@@ -20,6 +20,10 @@ export function AppHeader({
 }) {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  // 避免服务端渲染（无 window）与客户端 hydration 不一致
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const showCloud = mounted && isCloudEnabled;
 
   const stats = useLiveQuery(async () => {
     const all = await getDB().prompts.toArray();
@@ -53,12 +57,12 @@ export function AppHeader({
           </h1>
           <p className="text-[11px] text-muted leading-tight truncate">
             共 {stats?.total ?? "—"} 条 · 收藏 {stats?.fav ?? "—"}
-            {isCloudEnabled ? " · 云端同步" : " · 本地存储"}
+            {showCloud ? " · 云端同步" : " · 本地存储"}
           </p>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        {isCloudEnabled && (
+        {showCloud && (
           <Button
             variant="outline"
             size="sm"

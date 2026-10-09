@@ -25,8 +25,16 @@ export async function pullFromCloud(): Promise<{
       .from(BUCKET)
       .download(FILE);
     if (error) {
-      // 404 表示云端还没有数据，跳过
-      if (error.message?.includes("404") || String(error.statusCode) === "404") {
+      // 云端还没有数据（文件不存在 / bucket 不存在），跳过
+      const msg = String(error.message ?? "");
+      const code = String(error.statusCode ?? "");
+      if (
+        code === "404" ||
+        msg.includes("404") ||
+        msg.includes("not_found") ||
+        msg.includes("Object not found") ||
+        msg.includes("NoSuchKey")
+      ) {
         return { ok: true, message: "云端暂无数据，已使用本地数据" };
       }
       throw error;

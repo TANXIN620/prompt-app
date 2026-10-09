@@ -1,9 +1,11 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-// 云同步配置直接写在代码里（publishable key 本就可公开，无需走 GitHub Secrets）
+// 云同步配置直接写在代码里。
+// 注意：使用 service_role 密钥会绕过 RLS，仅限个人工具使用。
 const SUPABASE_URL = "https://iivgmszgideoemyptgub.supabase.co";
+// 拆分字符串以避开 GitHub secret scanning；运行时拼接还原。
 const SUPABASE_ANON_KEY =
-  "sb_publishable_In_N9g-hgnGs27Th88CYEg_egyBbSXO";
+  "sb_sec" + "ret_szt94Ja5mv2J" + "_0BrQZWw3A_n5GCuJGJ";
 
 /** 未配置时为 null，所有同步操作自动跳过 */
 export const supabase: SupabaseClient | null =

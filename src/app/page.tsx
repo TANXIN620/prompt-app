@@ -12,6 +12,8 @@ import { BatchImportDialog } from "@/components/BatchImportDialog";
 import { CategoryManageDialog } from "@/components/CategoryManageDialog";
 import { Modal } from "@/components/Modal";
 import { useUIStore } from "@/store/ui-store";
+import { pullFromCloud } from "@/lib/sync";
+import { isCloudEnabled } from "@/lib/supabase";
 
 type Dialog =
   | { kind: "none" }
@@ -51,6 +53,11 @@ export default function Page() {
     (async () => {
       try {
         await initDB();
+        // 初始化后从云端拉取最新数据（多设备共享）
+        if (isCloudEnabled) {
+          const r = await pullFromCloud();
+          if (!r.ok) console.warn("[sync]", r.message);
+        }
       } catch (e) {
         if (!cancelled)
           setError(e instanceof Error ? e.message : String(e));

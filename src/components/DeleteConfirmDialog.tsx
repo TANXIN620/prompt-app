@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { getDB } from "@/lib/db";
+import { deleteFromCloud } from "@/lib/sync";
 import { useUIStore } from "@/store/ui-store";
 import { Button } from "./ui";
 import { Modal } from "./Modal";
@@ -26,6 +27,7 @@ export function DeleteConfirmDialog({
     setBusy(true);
     try {
       await getDB().prompts.delete(promptId);
+      void deleteFromCloud("prompts", promptId);
       selectPrompt(null);
       onClose();
     } finally {

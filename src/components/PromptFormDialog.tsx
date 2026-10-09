@@ -14,6 +14,7 @@ import { useUIStore } from "@/store/ui-store";
 import { Button } from "./ui";
 import { Field, inputCls, Modal } from "./Modal";
 import { CategoryCombobox } from "./CategoryCombobox";
+import { pushOne } from "@/lib/sync";
 
 interface FormState {
   code: string;
@@ -120,6 +121,8 @@ export function PromptFormDialog({
           tags: form.tags,
           updatedAt: now,
         });
+        const updated = await db.prompts.get(editId);
+        if (updated) void pushOne("prompts", updated);
         selectPrompt(editId);
       } else {
         const id = `p-${now.toString(36)}-${Math.random()
@@ -140,6 +143,7 @@ export function PromptFormDialog({
           updatedAt: now,
         };
         await db.prompts.put(prompt);
+        void pushOne("prompts", prompt);
         selectPrompt(id);
       }
       onClose();

@@ -33,6 +33,8 @@ export interface Category {
   name: string;
   parentId: string | null;
   sortOrder: number;
+  /** 最后更新时间戳，用于云端合并 */
+  updatedAt?: number;
 }
 
 /** 标签 */
@@ -40,6 +42,8 @@ export interface Tag {
   id: string;
   name: string;
   color?: string;
+  /** 最后更新时间戳，用于云端合并 */
+  updatedAt?: number;
 }
 
 /** 批量导入解析出的单条草稿 */

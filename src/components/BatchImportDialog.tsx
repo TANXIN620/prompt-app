@@ -155,7 +155,14 @@ export function BatchImportDialog({
         });
         added++;
       }
-      if (toPut.length > 0) await db.prompts.bulkPut(toPut);
+      if (toPut.length > 0) {
+        await db.prompts.bulkPut(toPut);
+        // 批量推送到云端（upsert）
+        void (async () => {
+          const { pushToCloud } = await import("@/lib/sync");
+          await pushToCloud();
+        })();
+      }
       setImported({ added, dup: dup + duplicates });
     } finally {
       setBusy(false);

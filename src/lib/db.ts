@@ -6,6 +6,7 @@ import {
   seedSubcategories,
   seedTags,
 } from "./seed";
+import { deleteFromCloud, pushOne } from "./sync";
 
 export class PromptDB extends Dexie {
   prompts!: Table<Prompt, string>;
@@ -117,7 +118,9 @@ export async function addCategory(
     ? siblings
     : (await db.categories.toArray()).filter((c) => c.parentId === null);
   const sortOrder = sameLevel.length + 1;
-  await db.categories.put({ id, name, parentId, sortOrder });
+  const cat: Category = { id, name, parentId, sortOrder, updatedAt: Date.now() };
+  await db.categories.put(cat);
+  void pushOne("categories", cat);
   return id;
 }
 
@@ -129,7 +132,10 @@ export async function renameCategory(id: string, name: string): Promise<void> {
     .equals(id)
     .modify((c) => {
       c.name = name;
+      c.updatedAt = Date.now();
     });
+  const updated = await db.categories.get(id);
+  if (updated) void pushOne("categories", updated);
 }
 
 /** 移动分类到新父级（改变 parentId，sortOrder 追加到目标层级末尾） */
@@ -151,7 +157,10 @@ export async function moveCategory(
     .modify((c) => {
       c.parentId = newParentId;
       c.sortOrder = sortOrder;
+      c.updatedAt = Date.now();
     });
+  const updated = await db.categories.get(id);
+  if (updated) void pushOne("categories", updated);
 }
 
 /** 删除分类：叶子节点删除，其下提示词归到父级；有子分类则拒绝 */
@@ -180,6 +189,7 @@ export async function deleteCategory(id: string): Promise<void> {
       });
     await db.categories.delete(id);
   });
+  void deleteFromCloud("categories", id);
 }
 
 /** 判断 descendantId 是否是 ancestorId 的后代（含自身） */

@@ -1,12 +1,14 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// 云同步配置直接写在代码里（publishable key 本就可公开，无需走 GitHub Secrets）
+const SUPABASE_URL = "https://iivgmszgideoemyptgub.supabase.co";
+const SUPABASE_ANON_KEY =
+  "sb_publishable_In_N9g-hgnGs27Th88CYEg_egyBbSXO";
 
 /** 未配置时为 null，所有同步操作自动跳过 */
 export const supabase: SupabaseClient | null =
-  typeof window !== "undefined" && url && anonKey
-    ? createClient(url, anonKey, {
+  typeof window !== "undefined" && SUPABASE_URL && SUPABASE_ANON_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         auth: { persistSession: false },
       })
     : null;

@@ -2,23 +2,17 @@ import { supabase, isCloudEnabled } from "./supabase";
 import { getDB } from "./db";
 import type { Category, Prompt, Tag } from "./types";
 
-/** 合并策略：last-write-wins，按 updatedAt 比较；无时间戳的视为旧 */
-function mergeByUpdatedAt<T extends { id: string; updatedAt?: number }>(
-  local: T[],
-  cloud: T[],
-): T[] {
-  const map = new Map<string, T>();
-  for (const r of local) map.set(r.id, r);
-  for (const c of cloud) {
-    const cur = map.get(c.id);
-    if (!cur || (c.updatedAt ?? 0) >= (cur.updatedAt ?? 0)) {
-      map.set(c.id, c);
-    }
-  }
-  return Array.from(map.values());
+/** 所有数据打包成一个 JSON 存在 Storage，避免建表 */
+interface CloudDump {
+  categories: Category[];
+  tags: Tag[];
+  prompts: Prompt[];
 }
 
-/** 从云端拉取并合并到本地 IndexedDB（last-write-wins） */
+const BUCKET = "data";
+const FILE = "db.json";
+
+/** 从云端下载 db.json 并合并到本地（last-write-wins） */
 export async function pullFromCloud(): Promise<{
   ok: boolean;
   message: string;
@@ -27,15 +21,18 @@ export async function pullFromCloud(): Promise<{
     return { ok: false, message: "未配置云端同步（缺少 Supabase 密钥）" };
 
   try {
-    const [catRes, tagRes, promptRes] = await Promise.all([
-      supabase.from("categories").select("*"),
-      supabase.from("tags").select("*"),
-      supabase.from("prompts").select("*"),
-    ]);
-
-    if (catRes.error) throw catRes.error;
-    if (tagRes.error) throw tagRes.error;
-    if (promptRes.error) throw promptRes.error;
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .download(FILE);
+    if (error) {
+      // 404 表示云端还没有数据，跳过
+      if (error.message?.includes("404") || String(error.statusCode) === "404") {
+        return { ok: true, message: "云端暂无数据，已使用本地数据" };
+      }
+      throw error;
+    }
+    const text = await data.text();
+    const dump = JSON.parse(text) as CloudDump;
 
     const db = getDB();
     const [localCats, localTags, localPrompts] = await Promise.all([
@@ -44,12 +41,9 @@ export async function pullFromCloud(): Promise<{
       db.prompts.toArray(),
     ]);
 
-    const mergedCats = mergeByUpdatedAt(localCats, catRes.data as Category[]);
-    const mergedTags = mergeByUpdatedAt(localTags, tagRes.data as Tag[]);
-    const mergedPrompts = mergeByUpdatedAt(
-      localPrompts,
-      promptRes.data as Prompt[],
-    );
+    const mergedCats = mergeByUpdatedAt(localCats, dump.categories ?? []);
+    const mergedTags = mergeByUpdatedAt(localTags, dump.tags ?? []);
+    const mergedPrompts = mergeByUpdatedAt(localPrompts, dump.prompts ?? []);
 
     await db.transaction("rw", db.categories, db.tags, db.prompts, async () => {
       await db.categories.bulkPut(mergedCats);
@@ -67,7 +61,7 @@ export async function pullFromCloud(): Promise<{
   }
 }
 
-/** 把本地全部数据推送到云端（upsert） */
+/** 把本地全部数据打包上传覆盖 db.json */
 export async function pushToCloud(): Promise<{
   ok: boolean;
   message: string;
@@ -77,31 +71,30 @@ export async function pushToCloud(): Promise<{
 
   try {
     const db = getDB();
-    const [cats, tags, prompts] = await Promise.all([
+    const [categories, tags, prompts] = await Promise.all([
       db.categories.toArray(),
       db.tags.toArray(),
       db.prompts.toArray(),
     ]);
 
-    // 给无 updatedAt 的记录补上当前时间，保证云端合并正确
     const now = Date.now();
-    const catsReady = cats.map((c) => ({ ...c, updatedAt: c.updatedAt ?? now }));
-    const tagsReady = tags.map((t) => ({ ...t, updatedAt: t.updatedAt ?? now }));
-    const promptsReady = prompts.map((p) => ({ ...p, updatedAt: p.updatedAt ?? now }));
+    const dump: CloudDump = {
+      categories: categories.map((c) => ({ ...c, updatedAt: c.updatedAt ?? now })),
+      tags: tags.map((t) => ({ ...t, updatedAt: t.updatedAt ?? now })),
+      prompts: prompts.map((p) => ({ ...p, updatedAt: p.updatedAt ?? now })),
+    };
 
-    const results = await Promise.all([
-      supabase.from("categories").upsert(catsReady as any, { onConflict: "id" }),
-      supabase.from("tags").upsert(tagsReady as any, { onConflict: "id" }),
-      supabase.from("prompts").upsert(promptsReady as any, { onConflict: "id" }),
-    ]);
-
-    for (const r of results) {
-      if (r.error) throw r.error;
-    }
+    const blob = new Blob([JSON.stringify(dump, null, 2)], {
+      type: "application/json",
+    });
+    const { error } = await supabase.storage
+      .from(BUCKET)
+      .upload(FILE, blob, { upsert: true, contentType: "application/json" });
+    if (error) throw error;
 
     return {
       ok: true,
-      message: `已推送到云端：分类 ${cats.length} · 标签 ${tags.length} · 提示词 ${prompts.length}`,
+      message: `已推送到云端：分类 ${categories.length} · 标签 ${tags.length} · 提示词 ${prompts.length}`,
     };
   } catch (e) {
     console.error("[sync] push failed", e);
@@ -118,23 +111,30 @@ export async function syncAll(): Promise<{ ok: boolean; message: string }> {
   return { ok: true, message: "同步完成" };
 }
 
-/** 单条记录推送到云端（增删改后调用） */
-export async function pushOne(
-  table: "categories" | "tags" | "prompts",
-  record: Category | Tag | Prompt,
-): Promise<void> {
-  if (!isCloudEnabled || !supabase) return;
-  const ready = { ...record, updatedAt: record.updatedAt ?? Date.now() };
-  const { error } = await supabase.from(table).upsert(ready as any, { onConflict: "id" });
-  if (error) console.error("[sync] pushOne failed", table, error);
+/** 任意变更后触发一次全量推送（本地数据少，几十毫秒） */
+export async function pushOne(): Promise<void> {
+  if (!isCloudEnabled) return;
+  const r = await pushToCloud();
+  if (!r.ok) console.error("[sync] pushOne failed", r.message);
 }
 
-/** 从云端删除单条（本地删除后调用） */
-export async function deleteFromCloud(
-  table: "categories" | "tags" | "prompts",
-  id: string,
-): Promise<void> {
-  if (!isCloudEnabled || !supabase) return;
-  const { error } = await supabase.from(table).delete().eq("id", id);
-  if (error) console.error("[sync] deleteFromCloud failed", table, error);
+/** 兼容旧调用签名 */
+export async function deleteFromCloud(): Promise<void> {
+  if (!isCloudEnabled) return;
+  await pushToCloud();
+}
+
+function mergeByUpdatedAt<T extends { id: string; updatedAt?: number }>(
+  local: T[],
+  cloud: T[],
+): T[] {
+  const map = new Map<string, T>();
+  for (const r of local) map.set(r.id, r);
+  for (const c of cloud) {
+    const cur = map.get(c.id);
+    if (!cur || (c.updatedAt ?? 0) >= (cur.updatedAt ?? 0)) {
+      map.set(c.id, c);
+    }
+  }
+  return Array.from(map.values());
 }

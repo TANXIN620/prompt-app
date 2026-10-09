@@ -120,7 +120,7 @@ export async function addCategory(
   const sortOrder = sameLevel.length + 1;
   const cat: Category = { id, name, parentId, sortOrder, updatedAt: Date.now() };
   await db.categories.put(cat);
-  void pushOne("categories", cat);
+  void pushOne();
   return id;
 }
 
@@ -135,7 +135,7 @@ export async function renameCategory(id: string, name: string): Promise<void> {
       c.updatedAt = Date.now();
     });
   const updated = await db.categories.get(id);
-  if (updated) void pushOne("categories", updated);
+  if (updated) void pushOne();
 }
 
 /** 移动分类到新父级（改变 parentId，sortOrder 追加到目标层级末尾） */
@@ -160,7 +160,7 @@ export async function moveCategory(
       c.updatedAt = Date.now();
     });
   const updated = await db.categories.get(id);
-  if (updated) void pushOne("categories", updated);
+  if (updated) void pushOne();
 }
 
 /** 删除分类：叶子节点删除，其下提示词归到父级；有子分类则拒绝 */
@@ -189,7 +189,7 @@ export async function deleteCategory(id: string): Promise<void> {
       });
     await db.categories.delete(id);
   });
-  void deleteFromCloud("categories", id);
+  void deleteFromCloud();
 }
 
 /** 判断 descendantId 是否是 ancestorId 的后代（含自身） */

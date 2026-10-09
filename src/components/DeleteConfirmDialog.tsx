@@ -27,7 +27,7 @@ export function DeleteConfirmDialog({
     setBusy(true);
     try {
       await getDB().prompts.delete(promptId);
-      void deleteFromCloud("prompts", promptId);
+      void deleteFromCloud();
       selectPrompt(null);
       onClose();
     } finally {

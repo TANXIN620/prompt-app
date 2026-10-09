@@ -122,7 +122,7 @@ export function PromptFormDialog({
           updatedAt: now,
         });
         const updated = await db.prompts.get(editId);
-        if (updated) void pushOne("prompts", updated);
+        if (updated) void pushOne();
         selectPrompt(editId);
       } else {
         const id = `p-${now.toString(36)}-${Math.random()
@@ -143,7 +143,7 @@ export function PromptFormDialog({
           updatedAt: now,
         };
         await db.prompts.put(prompt);
-        void pushOne("prompts", prompt);
+        void pushOne();
         selectPrompt(id);
       }
       onClose();
